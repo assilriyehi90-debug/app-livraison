@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function role() { return get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role; }
+    function isAdmin() { return signedIn() && role() == 'admin'; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Inscription publique : uniquement avec le rôle « client » et un compte actif
+      allow create: if request.auth.uid == uid
+                    && request.resource.data.role == 'client'
+                    && request.resource.data.actif == true;
+      // Un utilisateur peut modifier son profil mais ni son rôle ni son statut
+      allow update: if (request.auth.uid == uid
+                        && request.resource.data.role == resource.data.role
+                        && request.resource.data.actif == resource.data.actif) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
